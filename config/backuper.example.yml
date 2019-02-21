@@ -1,0 +1,38 @@
+log:
+  level: info
+  format: json
+
+docker:
+  host: "unix:///var/run/docker.sock"
+  version: 1.25
+
+mount:
+  temp_directory: "/srv/backuper/tmp"
+
+rules:
+  # Example rule to backup all MySQL databases
+  - name: "localhost_mysql"
+
+    # run task every 1h
+    cron_spec: "@every 1h"
+
+    # allow task to run for at most 3h (task WILL NOT overlap, but WILL be delayed)
+    timeout: 3h
+
+    # directory within backuper container which represents robust storage
+    # (usually it should be external storage mounted over network)
+    target_directory: "/srv/backups/mysql"
+
+    # amount of backups to preserve
+    # this will not affect any backups made without this tool (i.e. not preserve within local db)
+    preserve_at_most: 3
+
+    # image and command to run
+    image: "mysql:5.7"
+
+    # the command to execute
+    # it should put all results into $BACKUP_TARGET_DIR (only results in this directory will be saved)
+    command:
+      - "sh"
+      - "-c"
+      - "mysqldump -ubackuper -pbackuper -h 127.0.0.1 -P 3306 --all-databases > $BACKUP_TARGET_DIR/dump.sql"
