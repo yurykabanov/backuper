@@ -24,21 +24,29 @@ const (
 var ExecStatusUnfinished = []execStatus{ExecStatusNew, ExecStatusCreated, ExecStatusStarted}
 
 type Backup struct {
-	Id int64 // identifier for DB
+	Id int64
 
+	// Rule name
 	Rule string
 
-	ContainerId string // running dumper container id (e.g. 'backup-do_something-XXXX-XXXX-XXXX')
+	// Unique container ID assigned by docker
+	ContainerId string
 
-	// directory within master container for given backup instance
-	// mounter to dumper container
+	// Directory within master container for given backup instance
+	// mounted to dumper container
 	TempDirectory string
+
+	// Directory within master container for given backup instance
+	// where successfully completed backup should be moved
 	TargetDirectory string
+
+	// Full path to successful backup
 	BackupDirectory string
 
-	// status of backup
+	// Status of backup
 	ExecStatus execStatus
 
+	// Docker container exit code
 	StatusCode int64
 
 	CreatedAt time.Time

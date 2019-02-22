@@ -5,7 +5,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 
-	"backuper/pkg/domain"
+	"github.com/yurykabanov/backuper/pkg/domain"
 )
 
 const (

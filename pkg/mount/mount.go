@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"backuper/pkg/util"
+	"github.com/yurykabanov/backuper/pkg/util"
 )
 
 type Manager struct {

@@ -1,30 +1,31 @@
 package main
 
 import (
+	"context"
 	"log"
 	"path"
 	"strings"
+	"time"
+
+	"github.com/yurykabanov/backuper/pkg/domain"
+	"github.com/yurykabanov/backuper/pkg/mount"
+	"github.com/yurykabanov/backuper/pkg/storage"
+	"github.com/yurykabanov/backuper/pkg/transfer"
+	"github.com/yurykabanov/backuper/pkg/util"
+
+	"github.com/sirupsen/logrus"
+
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/spf13/pflag"
-
-	"backuper/pkg/domain"
-	"backuper/pkg/mount"
-	"backuper/pkg/storage"
-	"backuper/pkg/transfer"
-	"backuper/pkg/util"
-
-	docker "github.com/docker/docker/client"
-	//_ "github.com/go-sql-driver/mysql"
+	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite3"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 
-	migratesqlite "github.com/golang-migrate/migrate/v4/database/sqlite3"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
-
+	docker "github.com/docker/docker/client"
 	"github.com/robfig/cron"
-	"github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 )
 
 var (
@@ -163,7 +164,15 @@ func MustConnectToDocker(logger logrus.FieldLogger) *docker.Client {
 
 	dc, err := docker.NewClient(host, version, nil, nil)
 	if err != nil {
-		logger.Fatal(err)
+		logger.WithError(err).Fatal("Unable to create docker client")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	_, err = dc.Ping(ctx)
+	if err != nil {
+		logger.WithError(err).Fatal("Unable to ping docker")
 	}
 
 	return dc
@@ -199,7 +208,7 @@ func main() {
 	mountManager := mount.New(viper.GetString(ConfigMountTempDirectory))
 	transferManager := transfer.New()
 
-	backupService := domain.NewBackupService(backupRepository, dockerClient, mountManager, transferManager)
+	backupService := domain.NewBackupService(logger, backupRepository, dockerClient, mountManager, transferManager)
 
 	backupManager := domain.NewBackupManager(logger, MustLoadRules(logger), backupService, backupRepository, cron.New())
 	backupManager.Run()

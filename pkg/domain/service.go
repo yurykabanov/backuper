@@ -13,6 +13,9 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
+
+	"github.com/yurykabanov/backuper/pkg/appcontext"
 )
 
 const maxErrorsWhileFinishing = 100
@@ -33,7 +36,7 @@ type MountManager interface {
 	Deallocate(string) error
 }
 
-type DockerClient interface {
+type dockerClient interface {
 	ContainerCreate(
 		ctx context.Context,
 		config *container.Config,
@@ -67,19 +70,23 @@ type DockerClient interface {
 }
 
 type BackupService struct {
+	logger logrus.FieldLogger
+
 	repo            BackupRepository
-	docker          DockerClient
+	docker          dockerClient
 	mountManager    MountManager
 	transferManager TransferManager
 }
 
 func NewBackupService(
+	logger logrus.FieldLogger,
 	repo BackupRepository,
-	docker DockerClient,
+	docker dockerClient,
 	mountManager MountManager,
 	transferManager TransferManager,
 ) *BackupService {
 	return &BackupService{
+		logger:          logger,
 		repo:            repo,
 		docker:          docker,
 		mountManager:    mountManager,
@@ -88,14 +95,20 @@ func NewBackupService(
 }
 
 func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, error) {
+	logger := appcontext.LoggerFromContext(s.logger, ctx)
+
 	var backup Backup
 	var err error
 
 	defer func() {
 		if err != nil {
+			logger.Debug("BackupService::StartBackup finished with error, marking backup failed")
+
 			backup.ExecStatus = ExecStatusFailure
 
-			_ = s.repo.Update(context.Background(), backup)
+			if err := s.repo.Update(context.Background(), backup); err != nil {
+				logger.WithError(err).Error("BackupService::StartBackup is unable to mark backup failed")
+			}
 		}
 	}()
 
@@ -136,13 +149,13 @@ func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, err
 			Env: []string{
 				"BACKUP_TARGET_DIR=/__backup__",
 			},
-		},                           // container config
+		}, // container config
 		&container.HostConfig{
 			NetworkMode: "host",
 			Mounts: []mount.Mount{
 				{Type: mount.TypeBind, Source: dir, Target: "/__backup__"},
 			},
-		},                           // host config
+		}, // host config
 		&network.NetworkingConfig{}, // networking config
 		s.containerName(backup),
 	)
@@ -167,15 +180,19 @@ func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, err
 }
 
 func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup, error) {
+	logger := appcontext.LoggerFromContext(s.logger, ctx)
+
 	var status int64
 	var err error
 
 	defer func() {
-		ctx, _ := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 
-		_ = s.docker.ContainerRemove(ctx, backup.ContainerId, types.ContainerRemoveOptions{
-			Force: true,
-		})
+		if err := s.docker.ContainerRemove(ctx, backup.ContainerId, types.ContainerRemoveOptions{Force: true}); err != nil {
+			logger.WithError(err).Error("BackupService::FinishBackup is unable to remove container")
+		}
+
+		cancel()
 	}()
 
 	errCounter := 0
@@ -217,9 +234,17 @@ func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup
 }
 
 func (s *BackupService) AbortBackup(ctx context.Context, backup Backup) error {
-	_ = s.docker.ContainerRemove(ctx, backup.ContainerId, types.ContainerRemoveOptions{
-		Force: true,
-	})
+	logger := appcontext.LoggerFromContext(s.logger, ctx)
+
+	defer func() {
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+
+		if err := s.docker.ContainerRemove(ctx, backup.ContainerId, types.ContainerRemoveOptions{Force: true}); err != nil {
+			logger.WithError(err).Error("BackupService::FinishBackup is unable to remove container")
+		}
+
+		cancel()
+	}()
 
 	_, err := s.markWithStatusAndDeallocate(backup, ExecStatusFailure)
 

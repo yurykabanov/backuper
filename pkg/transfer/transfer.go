@@ -7,15 +7,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"backuper/pkg/domain"
+	"github.com/yurykabanov/backuper/pkg/domain"
 )
 
 type Manager struct {
 }
 
 func New() *Manager {
-	return &Manager{
-	}
+	return &Manager{}
 }
 
 func (m *Manager) Transfer(backup domain.Backup) (string, error) {
