@@ -136,7 +136,7 @@ func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, err
 
 	backup.TempDirectory = dir
 
-	backup, err = s.repo.Create(context.Background(), backup)
+	backup, err = s.repo.Create(ctx, backup)
 	if err != nil {
 		return backup, err
 	}
@@ -186,7 +186,7 @@ func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup
 	var err error
 
 	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 
 		if err := s.docker.ContainerRemove(ctx, backup.ContainerId, types.ContainerRemoveOptions{Force: true}); err != nil {
 			logger.WithError(err).Error("BackupService::FinishBackup is unable to remove container")

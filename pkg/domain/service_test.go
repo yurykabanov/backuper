@@ -6,45 +6,40 @@ import (
 	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
 // region mapBackupRepository
-type mapBackupRepository struct {
-	lastId  int64
-	backups map[int64]Backup
+type backupRepositoryMock struct {
+	mock.Mock
 }
 
-func newMapBackupRepository() *mapBackupRepository {
-	return &mapBackupRepository{
-		backups: make(map[int64]Backup),
-	}
+func (m *backupRepositoryMock) Create(ctx context.Context, backup Backup) (Backup, error) {
+	args := m.Called(ctx, backup)
+	return args.Get(0).(Backup), args.Error(1)
 }
 
-func (r *mapBackupRepository) Create(backup Backup) (Backup, error) {
-	r.lastId++
-	backup.Id = r.lastId
-
-	r.backups[backup.Id] = backup
-
-	return backup, nil
+func (m *backupRepositoryMock) Update(ctx context.Context, backup Backup) error {
+	args := m.Called(ctx, backup)
+	return args.Error(0)
 }
 
-func (r *mapBackupRepository) Update(backup Backup) error {
-	r.backups[backup.Id] = backup
-
-	return nil
+func (m *backupRepositoryMock) FindAllUnfinished(ctx context.Context) ([]Backup, error) {
+	args := m.Called(ctx)
+	return args.Get(0).([]Backup), args.Error(1)
 }
 
-func (r *mapBackupRepository) FindAllUnfinished() ([]Backup, error) {
-	// TODO
-	panic("implement me")
+func (m *backupRepositoryMock) FindAllSuccessfulNotDeleted(ctx context.Context, rule Rule) ([]Backup, error) {
+	args := m.Called(ctx, rule)
+	return args.Get(0).([]Backup), args.Error(1)
 }
 
 // endregion
@@ -80,6 +75,15 @@ func (m *dockerClientMock) ContainerWait(
 ) (int64, error) {
 	args := m.Called(ctx, containerID)
 	return args.Get(0).(int64), args.Error(1)
+}
+
+func (m *dockerClientMock) ContainerRemove(
+	ctx context.Context,
+	containerID string,
+	options types.ContainerRemoveOptions,
+) error {
+	args := m.Called(ctx, containerID, options)
+	return args.Error(0)
 }
 
 func (m *dockerClientMock) ImagePull(
@@ -120,9 +124,9 @@ type transferManagerMock struct {
 	mock.Mock
 }
 
-func (m *transferManagerMock) Transfer(backup Backup) error {
+func (m *transferManagerMock) Transfer(backup Backup) (string, error) {
 	args := m.Called(backup)
-	return args.Error(0)
+	return args.String(0), args.Error(1)
 }
 
 // endregion
@@ -141,14 +145,23 @@ func (*namedReference) String() string {
 
 // endregion
 
+func discardLogger() *logrus.Logger {
+	logger := logrus.New()
+	logger.Out = ioutil.Discard
+
+	return logger
+}
+
 // region Test: pullImage
 func TestService_pullImage_Success(t *testing.T) {
+	repo := &backupRepositoryMock{}
+
 	dockerClient := &dockerClientMock{}
 
 	dockerClient.On("ImagePull", mock.Anything, mock.Anything, mock.Anything).
 		Return(ioutil.NopCloser(strings.NewReader("some response")), nil)
 
-	svc := NewBackupService(newMapBackupRepository(), dockerClient, nil, nil)
+	svc := NewBackupService(discardLogger(), repo, dockerClient, nil, nil)
 
 	err := svc.pullImage(context.Background(), &namedReference{})
 
@@ -156,12 +169,14 @@ func TestService_pullImage_Success(t *testing.T) {
 }
 
 func TestService_pullImage_Failure(t *testing.T) {
+	repo := &backupRepositoryMock{}
+
 	dockerClient := &dockerClientMock{}
 
 	dockerClient.On("ImagePull", mock.Anything, mock.Anything, mock.Anything).
 		Return(io.ReadCloser(nil), context.DeadlineExceeded)
 
-	svc := NewBackupService(newMapBackupRepository(), dockerClient, nil, nil)
+	svc := NewBackupService(discardLogger(), repo, dockerClient, nil, nil)
 
 	err := svc.pullImage(context.Background(), &namedReference{})
 
@@ -172,12 +187,23 @@ func TestService_pullImage_Failure(t *testing.T) {
 
 // region Test: StartBackup
 func TestService_StartBackup(t *testing.T) {
+	repo := &backupRepositoryMock{}
 	dockerClient := &dockerClientMock{}
 	mountManager := &mountManagerMock{}
 	transferManager := &transferManagerMock{}
 
+	createdAt, _ := time.Parse(time.RFC3339, "2019-01-01T02:03:04Z")
+
+	newBackup := Backup{
+		Rule:            "some-rule",
+		ExecStatus:      ExecStatusCreated,
+		TempDirectory:   "/tmp/temp_dir/some_mount_directory",
+		TargetDirectory: "/tmp/whatever/",
+		CreatedAt:       createdAt,
+	}
+
 	rule := Rule{
-		Name:            "some_rule",
+		Name:            "some-rule",
 		Image:           "whatever/image:1.2.3",
 		TargetDirectory: "/tmp/whatever/",
 		Command:         []string{"echo", "123", ">", "$BACKUP_TARGET_DIRECTORY/backup.dat"},
@@ -193,6 +219,8 @@ func TestService_StartBackup(t *testing.T) {
 
 	mountManager.On("Allocate").
 		Return(tempDirectory, nil)
+
+	repo.On("Create", ctx, mock.AnythingOfType("Backup")).Return(newBackup, nil)
 
 	dockerClient.On("ContainerCreate", ctx,
 		&container.Config{
@@ -213,12 +241,18 @@ func TestService_StartBackup(t *testing.T) {
 	dockerClient.On("ContainerStart", ctx, containerId, mock.Anything).
 		Return(nil)
 
-	svc := NewBackupService(newMapBackupRepository(), dockerClient, mountManager, transferManager)
+	backup := newBackup
+	backup.ExecStatus = ExecStatusStarted
+	backup.ContainerId = "some-id"
+
+	repo.On("Update", ctx, backup).Return(nil)
+
+	svc := NewBackupService(discardLogger(), repo, dockerClient, mountManager, transferManager)
 
 	backup, err := svc.StartBackup(ctx, rule)
 
 	assert.Nil(t, err)
-	assert.Equal(t, rule, backup.Rule)
+	assert.Equal(t, rule.Name, backup.Rule)
 	assert.Equal(t, ExecStatusStarted, backup.ExecStatus)
 	assert.NotEqual(t, "", backup.ContainerId)
 	assert.Equal(t, tempDirectory, backup.TempDirectory)
@@ -228,18 +262,14 @@ func TestService_StartBackup(t *testing.T) {
 
 // region Test: FinishBackup
 func TestService_FinishBackup(t *testing.T) {
+	repo := &backupRepositoryMock{}
 	dockerClient := &dockerClientMock{}
 	mountManager := &mountManagerMock{}
 	transferManager := &transferManagerMock{}
 
 	backup := Backup{
-		Rule: Rule{
-			Name:            "some_rule",
-			Image:           "whatever/image:1.2.3",
-			TargetDirectory: "/tmp/whatever/",
-			Command:         []string{"echo", "123", ">", "$BACKUP_TARGET_DIRECTORY/backup.dat"},
-		},
-		Id:            "some-id",
+		Rule:          "some-rule",
+		Id:            123456,
 		ContainerId:   "some-container-id",
 		TempDirectory: "/tmp/temp_dir",
 		ExecStatus:    ExecStatusStarted,
@@ -251,17 +281,28 @@ func TestService_FinishBackup(t *testing.T) {
 		Return(int64(0), nil)
 
 	transferManager.On("Transfer", backup).
-		Return(nil)
+		Return("/transfer/some_dir", nil)
 
 	mountManager.On("Deallocate", backup.TempDirectory).
 		Return(nil)
 
-	svc := NewBackupService(newMapBackupRepository(), dockerClient, mountManager, transferManager)
+	repo.On("Update", ctx, Backup{
+		Rule:            "some-rule",
+		Id:              123456,
+		ContainerId:     "some-container-id",
+		TempDirectory:   "/tmp/temp_dir",
+		BackupDirectory: "/transfer/some_dir", // this is updated
+		ExecStatus:      ExecStatusSuccess,    // and this is too
+	}).Return(nil)
 
-	backup, err := svc.FinishBackup(ctx, backup)
+	dockerClient.On("ContainerRemove", mock.Anything, backup.ContainerId, mock.Anything).Return(nil)
+
+	svc := NewBackupService(discardLogger(), repo, dockerClient, mountManager, transferManager)
+
+	resultBackup, err := svc.FinishBackup(ctx, backup)
 
 	assert.Nil(t, err)
-	assert.Equal(t, ExecStatusSuccess, backup.ExecStatus)
+	assert.Equal(t, ExecStatusSuccess, resultBackup.ExecStatus)
 }
 
 // endregion
