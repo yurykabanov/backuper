@@ -101,7 +101,7 @@ func LoadConfiguration() {
 	}
 }
 
-func MustCreateLogger(logLevel string) *logrus.Logger {
+func MustCreateLogger(logLevel, logFormat string) *logrus.Logger {
 	// logrus logger is used anywhere throughout the app
 	logrusLogger := logrus.StandardLogger()
 
@@ -112,10 +112,11 @@ func MustCreateLogger(logLevel string) *logrus.Logger {
 
 	logrusLogger.SetLevel(level)
 
-	switch logLevel {
+	switch logFormat {
 	case "json":
 		logrus.SetFormatter(&logrus.JSONFormatter{})
 	default:
+		fallthrough
 	case "text":
 		logrus.SetFormatter(&logrus.TextFormatter{})
 	}
@@ -191,7 +192,7 @@ func MustLoadRules(logger logrus.FieldLogger) []domain.Rule {
 
 func main() {
 	LoadConfiguration()
-	logger := MustCreateLogger(viper.GetString(ConfigLogLevel))
+	logger := MustCreateLogger(viper.GetString(ConfigLogLevel), viper.GetString(ConfigLogFormat))
 
 	logger.WithFields(logrus.Fields{
 		"build":   Build,
