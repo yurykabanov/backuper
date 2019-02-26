@@ -2,13 +2,30 @@ log:
   level: info
   format: json
 
+# HTTP Server configuration
+server:
+  # Bind address
+  address: 0.0.0.0:8000
+
+  # Server timeouts
+  timeout:
+    read: 30s
+    write: 30s
+
+  # Additional logging configuration
+  log:
+    requests: true
+
+# Docker configuration
 docker:
   host: "unix:///var/run/docker.sock"
   version: 1.25
 
+# Mount Manager configuration
 mount:
   temp_directory: "/srv/backuper/tmp"
 
+# Backup rules
 rules:
   # Example rule to backup all MySQL databases
   - name: "localhost_mysql"

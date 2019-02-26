@@ -12,7 +12,12 @@ const (
 	ruleNameKeyId contextId = iota
 	containerIdKeyId
 	backupIdKeyId
+	requestIdKeyId
 )
+
+func WithRequestId(ctx context.Context, requestId string) context.Context {
+	return context.WithValue(ctx, requestIdKeyId, requestId)
+}
 
 func WithBackupId(ctx context.Context, id int64) context.Context {
 	return context.WithValue(ctx, backupIdKeyId, id)
@@ -43,6 +48,10 @@ func LoggerFromContext(logger logrus.FieldLogger, ctx context.Context) logrus.Fi
 
 	if ctxBackupId, ok := ctx.Value(backupIdKeyId).(int64); ok && ctxBackupId != 0 {
 		result = result.WithField("backup_id", ctxBackupId)
+	}
+
+	if ctxRequestId, ok := ctx.Value(requestIdKeyId).(string); ok && ctxRequestId != "" {
+		result = result.WithField("request_id", ctxRequestId)
 	}
 
 	return result

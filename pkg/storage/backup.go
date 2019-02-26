@@ -48,6 +48,18 @@ const (
 			AND deleted_at IS NULL
 		ORDER BY created_at DESC
 	`
+
+	backupSelectLastFinished = `
+		SELECT b.*
+		FROM backups b
+		INNER JOIN (
+			SELECT rule, max(id) AS max_id
+			FROM backups 
+			WHERE exec_status IN (3,4)
+			GROUP BY rule
+		) bb ON b.id = bb.max_id
+		WHERE deleted_at IS NULL
+	`
 )
 
 type BackupRepository struct {
@@ -124,6 +136,17 @@ func (r *BackupRepository) FindAllSuccessfulNotDeleted(ctx context.Context, rule
 	var backups []domain.Backup
 
 	err := r.db.SelectContext(ctx, &backups, backupSelectSuccessfulNotDeleted, rule.Name)
+	if err != nil {
+		return nil, err
+	}
+
+	return backups, nil
+}
+
+func (r *BackupRepository) FindLastSuccessful(ctx context.Context) ([]domain.Backup, error) {
+	var backups []domain.Backup
+
+	err := r.db.SelectContext(ctx, &backups, backupSelectLastFinished)
 	if err != nil {
 		return nil, err
 	}

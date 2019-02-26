@@ -3,11 +3,15 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yurykabanov/backuper/pkg/domain"
+	"github.com/yurykabanov/backuper/pkg/http/handler"
+	"github.com/yurykabanov/backuper/pkg/http/middleware"
 	"github.com/yurykabanov/backuper/pkg/mount"
 	"github.com/yurykabanov/backuper/pkg/storage"
 	"github.com/yurykabanov/backuper/pkg/transfer"
@@ -26,6 +30,8 @@ import (
 
 	docker "github.com/docker/docker/client"
 	"github.com/robfig/cron"
+
+	"github.com/gorilla/mux"
 )
 
 var (
@@ -42,6 +48,11 @@ const (
 const (
 	ConfigLogLevel  = "log.level"
 	ConfigLogFormat = "log.format"
+
+	ConfigServerAddress      = "server.address"
+	ConfigServerTimeoutRead  = "server.timeout.read"
+	ConfigServerTimeoutWrite = "server.timeout.write"
+	ConfigServerLogRequests  = "server.log.requests"
 
 	ConfigDockerHost    = "docker.host"
 	ConfigDockerVersion = "docker.version"
@@ -190,6 +201,26 @@ func MustLoadRules(logger logrus.FieldLogger) []domain.Rule {
 	return rr
 }
 
+func MustBuildHttpHandler(
+	logger logrus.FieldLogger,
+	router http.Handler,
+) *http.Server {
+	var h = router
+
+	if viper.GetBool(ConfigServerLogRequests) {
+		h = middleware.WithRequestLogging(router, logger)
+	}
+
+	h = middleware.WithRequestId(h, middleware.DefaultRequestIdProvider)
+
+	return &http.Server{
+		Addr:         viper.GetString(ConfigServerAddress),
+		ReadTimeout:  viper.GetDuration(ConfigServerTimeoutRead),
+		WriteTimeout: viper.GetDuration(ConfigServerTimeoutWrite),
+		Handler:      h,
+	}
+}
+
 func main() {
 	LoadConfiguration()
 	logger := MustCreateLogger(viper.GetString(ConfigLogLevel), viper.GetString(ConfigLogFormat))
@@ -211,6 +242,30 @@ func main() {
 
 	backupService := domain.NewBackupService(logger, backupRepository, dockerClient, mountManager, transferManager)
 
-	backupManager := domain.NewBackupManager(logger, MustLoadRules(logger), backupService, backupRepository, cron.New())
-	backupManager.Run()
+	rules := MustLoadRules(logger)
+	backupManager := domain.NewBackupManager(logger, rules, backupService, backupRepository, cron.New())
+
+	backupsHandler := handler.NewBackupMetricHandler(logger, rules, backupRepository)
+
+	router := mux.NewRouter()
+	router.Handle("/metrics/backups", backupsHandler)
+
+	server := MustBuildHttpHandler(logger, router)
+
+	wg := &sync.WaitGroup{}
+	wg.Add(2)
+
+	go func() {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.WithError(err).WithField("addr", "0.0.0.0:8000").Fatal("Unable to run http server")
+		}
+		wg.Done()
+	}()
+
+	go func() {
+		backupManager.Run()
+		wg.Done()
+	}()
+
+	wg.Wait()
 }
