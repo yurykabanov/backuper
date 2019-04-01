@@ -13,16 +13,18 @@ const (
 		INSERT INTO backups (
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at
+			exec_status, status_code, created_at, deleted_at,
+			backup_size, finished_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	backupUpdateQuery = `
 		UPDATE backups SET
 			rule = ?, container_id = ?,
 			temp_directory = ?, target_directory = ?, backup_directory = ?,
-			exec_status = ?, status_code = ?, created_at = ?, deleted_at = ?
+			exec_status = ?, status_code = ?, created_at = ?, deleted_at = ?,
+			backup_size = ?, finished_at = ?
 		WHERE id = ?
 	`
 
@@ -31,7 +33,8 @@ const (
 			id,
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at
+			exec_status, status_code, created_at, deleted_at,
+			backup_size, finished_at
 		FROM backups
 		WHERE exec_status IN (?)
 	`
@@ -41,7 +44,8 @@ const (
 			id,
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at
+			exec_status, status_code, created_at, deleted_at,
+			backup_size, finished_at
 		FROM backups
 		WHERE rule = ? 
 			AND exec_status = 4
@@ -83,6 +87,7 @@ func (r *BackupRepository) Create(ctx context.Context, backup domain.Backup) (do
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
 		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
+		backup.BackupSize, backup.FinishedAt,
 	)
 	if err != nil {
 		return backup, err
@@ -109,6 +114,7 @@ func (r *BackupRepository) Update(ctx context.Context, backup domain.Backup) err
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
 		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
+		backup.BackupSize, backup.FinishedAt,
 		backup.Id,
 	)
 

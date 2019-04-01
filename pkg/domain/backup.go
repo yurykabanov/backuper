@@ -49,6 +49,10 @@ type Backup struct {
 	// Docker container exit code
 	StatusCode int64
 
-	CreatedAt time.Time
-	DeletedAt *time.Time
+	// BackupSize of a successful backup
+	BackupSize int64
+
+	CreatedAt  time.Time
+	FinishedAt *time.Time
+	DeletedAt  *time.Time
 }

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/docker/distribution/reference"
@@ -230,6 +232,21 @@ func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup
 	}
 	backup.BackupDirectory = dir
 
+	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() {
+			backup.BackupSize += info.Size()
+		}
+
+		return err
+	})
+	if err != nil {
+		logger.WithError(err).Warn("Unable to calculate backup size in spite of it has finished successfully")
+	}
+
 	return s.markWithStatusAndDeallocate(backup, ExecStatusSuccess)
 }
 
@@ -274,7 +291,10 @@ func (s *BackupService) containerName(backup Backup) string {
 }
 
 func (s *BackupService) markWithStatusAndDeallocate(backup Backup, execStatus execStatus) (Backup, error) {
+	now := time.Now()
+
 	backup.ExecStatus = execStatus
+	backup.FinishedAt = &now
 
 	err := s.repo.Update(context.Background(), backup)
 	if err != nil {

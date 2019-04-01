@@ -39,6 +39,7 @@ func RenameDir(src string, dst string, force bool) (err error) {
 	}
 	return nil
 }
+
 func CopyDir(src string, dst string, force bool) (err error) {
 	src = filepath.Clean(src)
 	dst = filepath.Clean(dst)
