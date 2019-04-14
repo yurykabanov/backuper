@@ -14,9 +14,9 @@ const (
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
 			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at
+			backup_size, finished_at, generation
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	backupUpdateQuery = `
@@ -24,7 +24,7 @@ const (
 			rule = ?, container_id = ?,
 			temp_directory = ?, target_directory = ?, backup_directory = ?,
 			exec_status = ?, status_code = ?, created_at = ?, deleted_at = ?,
-			backup_size = ?, finished_at = ?
+			backup_size = ?, finished_at = ?, generation = ?
 		WHERE id = ?
 	`
 
@@ -34,7 +34,7 @@ const (
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
 			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at
+			backup_size, finished_at, generation
 		FROM backups
 		WHERE exec_status IN (?)
 	`
@@ -45,12 +45,12 @@ const (
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
 			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at
+			backup_size, finished_at, generation
 		FROM backups
 		WHERE rule = ? 
 			AND exec_status = 4
 			AND deleted_at IS NULL
-		ORDER BY created_at DESC
+		ORDER BY created_at ASC
 	`
 
 	backupSelectLastFinished = `
@@ -87,7 +87,7 @@ func (r *BackupRepository) Create(ctx context.Context, backup domain.Backup) (do
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
 		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
-		backup.BackupSize, backup.FinishedAt,
+		backup.BackupSize, backup.FinishedAt, backup.Generation,
 	)
 	if err != nil {
 		return backup, err
@@ -114,7 +114,7 @@ func (r *BackupRepository) Update(ctx context.Context, backup domain.Backup) err
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
 		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
-		backup.BackupSize, backup.FinishedAt,
+		backup.BackupSize, backup.FinishedAt, backup.Generation,
 		backup.Id,
 	)
 

@@ -194,6 +194,32 @@ func (m *BackupManager) awaitBackupFinish(ctx context.Context, rule Rule, backup
 	logger.WithField("status_code", backup.StatusCode).Info("Backup finished")
 }
 
+// Each generation is considered as following:
+//
+//             preserved
+//             [--------]
+//      -X--X--X--X--X--X----> t
+//       [--]
+//       old
+//
+// where 'X' is a backup made at some time moment
+//
+// Old items are candidates for pushing to the next generation
+//
+//     generation 0:                 --A1--[A2--A3--A4--A5]-->t
+//                                     |
+//     generation 1: --B1-----B2-------__
+//
+// On this figure one 'A' backup is such candidate.
+//
+// It could be either pushed or not depending on time diff between B2 and A1
+//
+//     generation 0:             A1--[A2--A3--A4--A5]-->t
+//     generation 1: --B1-----B2-__                       <- A1 will be discarded, time_diff(A1, B2) is too small
+//
+//     generation 0:                 A1--[A2--A3--A4--A5]-->t
+//     generation 1: --B1-----B2-----__                   <- A1 will not be discarded, time_diff(A1, B2) is enough
+//
 func (m *BackupManager) sweepOldBackups(ctx context.Context, rule Rule) {
 	logger := appcontext.LoggerFromContext(m.logger, ctx)
 
@@ -203,15 +229,75 @@ func (m *BackupManager) sweepOldBackups(ctx context.Context, rule Rule) {
 		logger.WithError(err).Error("Unable to query old backups")
 	}
 
-	// if rule limit max amount of backups: perform `service.DeleteBackup` for old ones
-	if rule.PreserveAtMost <= 0 || len(recentSuccessfulBackups) <= rule.PreserveAtMost {
-		return
-	}
+	backups := m.groupByGeneration(recentSuccessfulBackups)
+	maxGeneration := len(rule.RotationRules) - 1
 
-	for _, backup := range recentSuccessfulBackups[rule.PreserveAtMost:] {
-		err = m.service.DeleteBackup(appcontext.WithBackupId(ctx, backup.Id), backup)
-		if err != nil {
-			logger.WithError(err).Error("Unable to delete backup")
+	for generation := 0; generation <= maxGeneration; generation++ {
+		// How many backups will are candidates for pushing to the next generation
+		oldCount := len(backups[generation]) - rule.RotationRules[generation].PreserveAtMost
+
+		// The `oldCount` value could be:
+		// - negative: current generation is not full
+		// - zero: generation is full, and there is no new backups
+		// - positive: 1 or more backups should be pushed to next generation (more than one in case of resizing)
+		if oldCount <= 0 {
+			continue
+		}
+
+		oldBackups := backups[generation][:oldCount]
+		backups[generation] = backups[generation][oldCount:]
+
+		// Backups from last generation are discarded completely
+		if generation >= maxGeneration {
+			logger.Infof("Found %d backups with generation %d, discarding them completely", oldCount, generation)
+
+			for _, backup := range oldBackups {
+				err = m.service.DeleteBackup(appcontext.WithBackupId(ctx, backup.Id), backup)
+				if err != nil {
+					logger.WithError(err).Error("Unable to delete backup")
+				}
+			}
+
+			continue
+		}
+
+		// Push all old backups from given generation to the next one
+		for _, old := range oldBackups {
+			isEmpty := len(backups[generation+1]) == 0
+			if !isEmpty {
+				diffToNewestFromNextGeneration := old.CreatedAt.Sub(backups[generation+1][len(backups[generation+1])-1].CreatedAt)
+
+				// If item is not old enough (i.e. not enough time has passed to satisfy next generation's `Period` clause), then discard it
+				if diffToNewestFromNextGeneration.Seconds() < rule.RotationRules[generation+1].Period.Seconds() {
+					logger.Infof("Discarding backup id=%d (generation %d) due to time difference is not enough for pushing it to the next generation", old.Id, generation)
+
+					err = m.service.DeleteBackup(appcontext.WithBackupId(ctx, old.Id), old)
+					if err != nil {
+						logger.WithError(err).Error("Unable to delete backup")
+					}
+
+					continue
+				}
+			}
+
+			logrus.Infof("Pushing backup id=%d from generation %d to %d", old.Id, generation, generation+1)
+			old.Generation += 1
+			err = m.repo.Update(appcontext.WithBackupId(ctx, old.Id), old)
+			if err != nil {
+				logger.WithError(err).Error("Unable to update backup")
+			}
+
+			backups[generation+1] = append(backups[generation+1], old)
 		}
 	}
+}
+
+func (m *BackupManager) groupByGeneration(backups []Backup) map[int][]Backup {
+	result := make(map[int][]Backup)
+
+	for _, b := range backups {
+		result[b.Generation] = append(result[b.Generation], b)
+	}
+
+	return result
 }

@@ -3,11 +3,16 @@ package domain
 import "time"
 
 type Rule struct {
-	Name            string        `mapstructure:"name"`
-	Image           string        `mapstructure:"image"`
-	Command         []string      `mapstructure:"command"`
-	TargetDirectory string        `mapstructure:"target_directory"`
-	CronSpec        string        `mapstructure:"cron_spec"`
-	Timeout         time.Duration `mapstructure:"timeout"`
-	PreserveAtMost  int           `mapstructure:"preserve_at_most"`
+	Name            string         `mapstructure:"name"`
+	Image           string         `mapstructure:"image"`
+	Command         []string       `mapstructure:"command"`
+	TargetDirectory string         `mapstructure:"target_directory"`
+	Timeout         time.Duration  `mapstructure:"timeout"`
+	CronSpec        string         `mapstructure:"cron_spec"`
+	RotationRules   []RotationRule `mapstructure:"rotation_rules"`
+}
+
+type RotationRule struct {
+	Period         time.Duration `mapstructure:"period"`
+	PreserveAtMost int           `mapstructure:"preserve_at_most"`
 }

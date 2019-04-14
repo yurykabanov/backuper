@@ -30,9 +30,6 @@ rules:
   # Example rule to backup all MySQL databases
   - name: "localhost_mysql"
 
-    # run task every 1h
-    cron_spec: "@every 1h"
-
     # allow task to run for at most 3h (task WILL NOT overlap, but WILL be delayed)
     timeout: 3h
 
@@ -40,9 +37,18 @@ rules:
     # (usually it should be external storage mounted over network)
     target_directory: "/srv/backups/mysql"
 
-    # amount of backups to preserve
-    # this will not affect any backups made without this tool (i.e. not preserve within local db)
-    preserve_at_most: 3
+    # run task every 1h
+    cron_spec: "@every 1h"
+
+    # Rotation rules
+    # NOTE: unfortunately `time.ParseDuration` doesn't support days and larger time period markers
+    rotation_rules:
+      - period: 1h
+        preserve_at_most: 5
+      - period: 24h # 1 day
+        preserve_at_most: 2
+      - period: 168h # 7 days
+        preserve_at_most: 1
 
     # image and command to run
     image: "mysql:5.7"

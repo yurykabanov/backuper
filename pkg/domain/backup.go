@@ -52,6 +52,9 @@ type Backup struct {
 	// BackupSize of a successful backup
 	BackupSize int64
 
+	// Generation of a backup
+	Generation int
+
 	CreatedAt  time.Time
 	FinishedAt *time.Time
 	DeletedAt  *time.Time
