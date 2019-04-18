@@ -7,6 +7,7 @@ import (
 	"github.com/robfig/cron"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"github.com/yurykabanov/go-yandex-disk"
 	"go.uber.org/fx"
 
 	"github.com/yurykabanov/backuper/pkg/domain"
@@ -36,8 +37,44 @@ func MountManager(config *MountManagerConfig) domain.MountManager {
 	return mount.New(config.BaseDirectory)
 }
 
-func TransferManager() domain.TransferManager {
-	return transfer.New()
+type TransferManagerConfig struct {
+	NamedEntries map[string]TransferManagerConfigEntry
+}
+
+type TransferManagerConfigEntry struct {
+	Type string
+	Root string
+	Opts map[string]interface{}
+}
+
+func TransferManagerConfigProvider(v *viper.Viper) (*TransferManagerConfig, error) {
+	var config map[string]TransferManagerConfigEntry
+
+	err := v.UnmarshalKey("transfer", &config)
+	if err != nil {
+		return nil, err
+	}
+
+	return &TransferManagerConfig{NamedEntries: config}, nil
+}
+
+func TransferManager(config *TransferManagerConfig) domain.TransferManager {
+	var mounts = make(map[string]domain.TransferManager)
+
+	for k, v := range config.NamedEntries {
+		var m domain.TransferManager
+		switch v.Type {
+		case "local":
+			m = transfer.NewLocalMount(v.Root)
+		case "yadisk":
+			m = transfer.NewYaDiskMount(yadisk.NewFromAccessToken(v.Opts["access_token"].(string)), v.Root)
+		default:
+			continue
+		}
+		mounts[k] = m
+	}
+
+	return transfer.NewManager(mounts)
 }
 
 func BackupService(

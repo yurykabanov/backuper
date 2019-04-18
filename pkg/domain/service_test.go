@@ -195,11 +195,11 @@ func TestService_StartBackup(t *testing.T) {
 	createdAt, _ := time.Parse(time.RFC3339, "2019-01-01T02:03:04Z")
 
 	newBackup := Backup{
-		Rule:            "some-rule",
-		ExecStatus:      ExecStatusCreated,
-		TempDirectory:   "/tmp/temp_dir/some_mount_directory",
-		TargetDirectory: "/tmp/whatever/",
-		CreatedAt:       createdAt,
+		Rule:          "some-rule",
+		ExecStatus:    ExecStatusCreated,
+		TempDirectory: "/tmp/temp_dir/some_mount_directory",
+		//TargetDirectory: "/tmp/whatever/",
+		CreatedAt: createdAt,
 	}
 
 	rule := Rule{
@@ -217,7 +217,7 @@ func TestService_StartBackup(t *testing.T) {
 	dockerClient.On("ImagePull", ctx, mock.Anything, mock.Anything).
 		Return(ioutil.NopCloser(strings.NewReader("some response")), nil)
 
-	mountManager.On("Allocate").
+	mountManager.On("AllocateTemp").
 		Return(tempDirectory, nil)
 
 	repo.On("Create", ctx, mock.AnythingOfType("Backup")).Return(newBackup, nil)
@@ -283,7 +283,7 @@ func TestService_FinishBackup(t *testing.T) {
 	transferManager.On("Transfer", backup).
 		Return("/transfer/some_dir", nil)
 
-	mountManager.On("Deallocate", backup.TempDirectory).
+	mountManager.On("DeallocateTemp", backup.TempDirectory).
 		Return(nil)
 
 	repo.On("Update", ctx, Backup{

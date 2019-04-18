@@ -6,7 +6,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
-	"path/filepath"
+	"path"
 	"time"
 
 	"github.com/docker/distribution/reference"
@@ -18,6 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"github.com/yurykabanov/backuper/pkg/appcontext"
+	"github.com/yurykabanov/backuper/pkg/util"
 )
 
 const maxErrorsWhileFinishing = 100
@@ -31,11 +32,12 @@ type BackupRepository interface {
 
 type TransferManager interface {
 	Transfer(Backup) (string, error)
+	Remove(Backup) error
 }
 
 type MountManager interface {
-	Allocate() (string, error)
-	Deallocate(string) error
+	AllocateTemp() (string, error)
+	DeallocateTemp(string) error
 }
 
 type dockerClient interface {
@@ -115,10 +117,10 @@ func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, err
 	}()
 
 	backup = Backup{
-		Rule:            rule.Name,
-		TargetDirectory: rule.TargetDirectory,
-		ExecStatus:      ExecStatusCreated,
-		CreatedAt:       time.Now(),
+		Rule:        rule.Name,
+		ExecStatus:  ExecStatusCreated,
+		CreatedAt:   time.Now(),
+		StorageName: rule.StorageName,
 	}
 
 	ref, err := reference.ParseNormalizedNamed(rule.Image)
@@ -131,7 +133,7 @@ func (s *BackupService) StartBackup(ctx context.Context, rule Rule) (Backup, err
 		return backup, err
 	}
 
-	dir, err := s.mountManager.Allocate()
+	dir, err := s.mountManager.AllocateTemp()
 	if err != nil {
 		return backup, err
 	}
@@ -224,28 +226,28 @@ func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup
 		return backup, errors.New("status code is not zero")
 	}
 
-	dir, err := s.transferManager.Transfer(backup)
+	tempBackupFile := path.Join(backup.TempDirectory, "__backup__.zip")
+	err = util.ZipDirectory(tempBackupFile, backup.TempDirectory)
+	if err != nil {
+		_, _ = s.markWithStatusAndDeallocate(backup, ExecStatusFailure)
+
+		return backup, errors.New("unable to zip temp data")
+	}
+	backup.TempBackupFile = tempBackupFile
+
+	if tmpFileStat, err := os.Stat(tempBackupFile); err == nil {
+		backup.BackupSize = tmpFileStat.Size()
+	} else {
+		logger.WithError(err).Warn("Unable to calculate backup size in spite of it has finished successfully")
+	}
+
+	storageBackupFile, err := s.transferManager.Transfer(backup)
 	if err != nil {
 		_, _ = s.markWithStatusAndDeallocate(backup, ExecStatusFailure)
 
 		return backup, err
 	}
-	backup.BackupDirectory = dir
-
-	err = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if !info.IsDir() {
-			backup.BackupSize += info.Size()
-		}
-
-		return err
-	})
-	if err != nil {
-		logger.WithError(err).Warn("Unable to calculate backup size in spite of it has finished successfully")
-	}
+	backup.BackupFile = storageBackupFile
 
 	return s.markWithStatusAndDeallocate(backup, ExecStatusSuccess)
 }
@@ -300,7 +302,7 @@ func (s *BackupService) markWithStatusAndDeallocate(backup Backup, execStatus ex
 	if err != nil {
 		return backup, err
 	}
-	err = s.mountManager.Deallocate(backup.TempDirectory)
+	err = s.mountManager.DeallocateTemp(backup.TempDirectory)
 	if err != nil {
 		return backup, err
 	}
@@ -309,7 +311,7 @@ func (s *BackupService) markWithStatusAndDeallocate(backup Backup, execStatus ex
 }
 
 func (s *BackupService) DeleteBackup(ctx context.Context, backup Backup) error {
-	err := s.mountManager.Deallocate(backup.BackupDirectory)
+	err := s.transferManager.Remove(backup)
 	if err != nil {
 		return err
 	}

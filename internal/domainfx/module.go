@@ -9,6 +9,7 @@ var Module = fx.Options(
 	fx.Provide(NewCron),
 	fx.Provide(MountManagerConfigProvider),
 	fx.Provide(MountManager),
+	fx.Provide(TransferManagerConfigProvider),
 	fx.Provide(TransferManager),
 	fx.Provide(BackupService),
 	fx.Provide(BackupManager),

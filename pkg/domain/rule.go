@@ -10,6 +10,7 @@ type Rule struct {
 	Timeout         time.Duration  `mapstructure:"timeout"`
 	CronSpec        string         `mapstructure:"cron_spec"`
 	RotationRules   []RotationRule `mapstructure:"rotation_rules"`
+	StorageName     string         `mapstructure:"storage_name"`
 }
 
 type RotationRule struct {

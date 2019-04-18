@@ -17,7 +17,7 @@ func New(base string) *Manager {
 	}
 }
 
-func (m *Manager) Allocate() (string, error) {
+func (m *Manager) AllocateTemp() (string, error) {
 	dir := filepath.Join(m.base, util.RandStringBytesMaskImprSrc(40))
 
 	err := os.Mkdir(dir, os.ModeDir|os.ModePerm)
@@ -27,6 +27,6 @@ func (m *Manager) Allocate() (string, error) {
 	return dir, nil
 }
 
-func (m *Manager) Deallocate(dir string) error {
+func (m *Manager) DeallocateTemp(dir string) error {
 	return os.RemoveAll(dir)
 }

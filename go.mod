@@ -14,6 +14,7 @@ require (
 	github.com/spf13/pflag v1.0.3
 	github.com/spf13/viper v1.3.1
 	github.com/stretchr/testify v1.3.0
+	github.com/yurykabanov/go-yandex-disk v0.0.0-20190410184150-7d6fc1ff945c
 	go.uber.org/atomic v1.3.2 // indirect
 	go.uber.org/dig v1.7.0 // indirect
 	go.uber.org/fx v1.9.0

@@ -86,7 +86,7 @@ func (m *BackupManager) Run() {
 		err = m.cron.AddFunc(m.rules[rule].CronSpec, func() {
 			t := time.Now()
 
-			fields := logrus.Fields{"rule": rule, "time": t}
+			fields := logrus.Fields{"rule": rule, "created_at": t}
 
 			select {
 			case ch <- Backup{Rule: rule, CreatedAt: t}:

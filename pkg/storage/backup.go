@@ -13,18 +13,22 @@ const (
 		INSERT INTO backups (
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at, generation
+			exec_status, status_code, 
+      backup_size, generation,
+			storage_name, temp_backup_file, backup_file,
+			created_at, finished_at, deleted_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	backupUpdateQuery = `
 		UPDATE backups SET
 			rule = ?, container_id = ?,
 			temp_directory = ?, target_directory = ?, backup_directory = ?,
-			exec_status = ?, status_code = ?, created_at = ?, deleted_at = ?,
-			backup_size = ?, finished_at = ?, generation = ?
+			exec_status = ?, status_code = ?, 
+			backup_size = ?, generation = ?,
+			storage_name = ?, temp_backup_file = ?, backup_file = ?,
+			created_at = ?, finished_at = ?, deleted_at = ?
 		WHERE id = ?
 	`
 
@@ -33,8 +37,10 @@ const (
 			id,
 			rule, container_id,
 			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at, generation
+			exec_status, status_code, 
+      backup_size, generation,
+			storage_name, temp_backup_file, backup_file,
+			created_at, finished_at, deleted_at
 		FROM backups
 		WHERE exec_status IN (?)
 	`
@@ -43,9 +49,11 @@ const (
 		SELECT
 			id,
 			rule, container_id,
-			temp_directory, target_directory, backup_directory,
-			exec_status, status_code, created_at, deleted_at,
-			backup_size, finished_at, generation
+			temp_directory, target_directory,
+			exec_status, status_code, 
+      backup_size, generation,
+			storage_name, temp_backup_file, backup_file,
+			created_at, finished_at, deleted_at
 		FROM backups
 		WHERE rule = ? 
 			AND exec_status = 4
@@ -86,8 +94,10 @@ func (r *BackupRepository) Create(ctx context.Context, backup domain.Backup) (do
 		ctx,
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
-		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
-		backup.BackupSize, backup.FinishedAt, backup.Generation,
+		backup.ExecStatus, backup.StatusCode,
+		backup.BackupSize, backup.Generation,
+		backup.StorageName, backup.TempBackupFile, backup.BackupFile,
+		backup.CreatedAt, backup.FinishedAt, backup.DeletedAt,
 	)
 	if err != nil {
 		return backup, err
@@ -113,8 +123,10 @@ func (r *BackupRepository) Update(ctx context.Context, backup domain.Backup) err
 		ctx,
 		backup.Rule, backup.ContainerId,
 		backup.TempDirectory, backup.TargetDirectory, backup.BackupDirectory,
-		backup.ExecStatus, backup.StatusCode, backup.CreatedAt, backup.DeletedAt,
-		backup.BackupSize, backup.FinishedAt, backup.Generation,
+		backup.ExecStatus, backup.StatusCode,
+		backup.BackupSize, backup.Generation,
+		backup.StorageName, backup.TempBackupFile, backup.BackupFile,
+		backup.CreatedAt, backup.FinishedAt, backup.DeletedAt,
 		backup.Id,
 	)
 
