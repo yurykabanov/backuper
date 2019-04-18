@@ -25,6 +25,18 @@ docker:
 mount:
   temp_directory: "/srv/backuper/tmp"
 
+# Transfer and storage configuration
+transfer:
+  some_local_name:
+    type: local
+    root: "/some/local/target_dir"
+
+  some_remote_name:
+    type: yadisk
+    root: "/some/remote/target_dir"
+    opts:
+      access_token: "YANDEX_DISK_ACCESS_TOKEN"
+
 # Backup rules
 rules:
   # Example rule to backup all MySQL databases
@@ -32,10 +44,6 @@ rules:
 
     # allow task to run for at most 3h (task WILL NOT overlap, but WILL be delayed)
     timeout: 3h
-
-    # directory within backuper container which represents robust storage
-    # (usually it should be external storage mounted over network)
-    target_directory: "/srv/backups/mysql"
 
     # run task every 1h
     cron_spec: "@every 1h"
@@ -52,6 +60,9 @@ rules:
 
     # image and command to run
     image: "mysql:5.7"
+
+    # will use remote transfer with name 'some_remote_name'
+    storage_name: "some_remote_name"
 
     # the command to execute
     # it should put all results into $BACKUP_TARGET_DIR (only results in this directory will be saved)
