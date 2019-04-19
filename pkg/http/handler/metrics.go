@@ -31,10 +31,10 @@ func NewBackupMetricHandler(logger logrus.FieldLogger, rules []domain.Rule, repo
 }
 
 type backupMetricResponse struct {
-	RuleName               string    `json:"rule_name"`
-	BackupSize             int64     `json:"backup_size"`
-	LastSuccessfulAt       time.Time `json:"last_successful_at"`
-	LastCompletionNanoTime int64     `json:"last_completion_nano_time"`
+	RuleName         string `json:"rule_name"`
+	BackupSize       int64  `json:"backup_size"`
+	LastSuccessfulAt int64  `json:"last_successful_at_mtime"`
+	LastCompletion   int64  `json:"last_completion_mtime"`
 }
 
 func (h *BackupMetricHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -54,10 +54,10 @@ func (h *BackupMetricHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 
 	for _, b := range bb {
 		result = append(result, backupMetricResponse{
-			RuleName:               b.Rule,
-			LastSuccessfulAt:       b.CreatedAt,
-			LastCompletionNanoTime: b.FinishedAt.Sub(b.CreatedAt).Nanoseconds(),
-			BackupSize:             b.BackupSize,
+			RuleName:         b.Rule,
+			LastSuccessfulAt: b.CreatedAt.UnixNano() / 1e6,
+			LastCompletion:   b.FinishedAt.Sub(b.CreatedAt).Nanoseconds() / 1e6,
+			BackupSize:       b.BackupSize,
 		})
 	}
 
