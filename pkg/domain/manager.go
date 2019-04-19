@@ -83,18 +83,7 @@ func (m *BackupManager) Run() {
 
 	// register handlers in go cron for every rule
 	for rule, ch := range m.active {
-		err = m.cron.AddFunc(m.rules[rule].CronSpec, func() {
-			t := time.Now()
-
-			fields := logrus.Fields{"rule": rule, "created_at": t}
-
-			select {
-			case ch <- Backup{Rule: rule, CreatedAt: t}:
-				m.logger.WithFields(fields).Info("Dispatched new backup")
-			default:
-				m.logger.WithFields(fields).Warn("Unable to dispatch new backup")
-			}
-		})
+		err = m.registerRule(rule, ch)
 		if err != nil {
 			m.logger.WithField("spec", m.rules[rule].CronSpec).Fatalf("Invalid cron spec: '%s'", m.rules[rule].CronSpec)
 		}
@@ -300,4 +289,19 @@ func (m *BackupManager) groupByGeneration(backups []Backup) map[int][]Backup {
 	}
 
 	return result
+}
+
+func (m *BackupManager) registerRule(rule string, ch chan<- Backup) error {
+	return m.cron.AddFunc(m.rules[rule].CronSpec, func() {
+		t := time.Now()
+
+		fields := logrus.Fields{"rule": rule, "created_at": t}
+
+		select {
+		case ch <- Backup{Rule: rule, CreatedAt: t}:
+			m.logger.WithFields(fields).Info("Dispatched new backup")
+		default:
+			m.logger.WithFields(fields).Warn("Unable to dispatch new backup")
+		}
+	})
 }
