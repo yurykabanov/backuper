@@ -231,7 +231,7 @@ func (s *BackupService) FinishBackup(ctx context.Context, backup Backup) (Backup
 	if err != nil {
 		_, _ = s.markWithStatusAndDeallocate(backup, ExecStatusFailure)
 
-		return backup, errors.New("unable to zip temp data")
+		return backup, fmt.Errorf("unable to zip temp data: %s", err)
 	}
 	backup.TempBackupFile = tempBackupFile
 
