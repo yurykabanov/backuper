@@ -24,4 +24,7 @@ require (
 	golang.org/x/sys v0.0.0-20190204203706-41f3e6584952 // indirect
 )
 
-replace github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.3.0
+replace (
+	git.apache.org/thrift.git => github.com/apache/thrift v0.0.0-20180902110319-2566ecd5d999
+	github.com/Sirupsen/logrus => github.com/sirupsen/logrus v1.3.0
+)
